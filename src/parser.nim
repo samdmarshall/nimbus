@@ -46,7 +46,7 @@ proc parseTranslationUnit*(file_path: string, input_language: Language): void =
   let parameter_count = (arguments.len - 1).cint
   let tu = libclang.parseTranslationUnit(index, file_path.cstring, args_cstring, parameter_count, nil, 0, 0)
   var file_path_cstring = file_path.cstring
-  let client_data = CXClientData((addr file_path_cstring))
+  let client_data = CXClientData(addr file_path_cstring)
   let cursor = libclang.getTranslationUnitCursor(tu)
   discard libclang.visitChildren(cursor, visitChildrenCallback, client_data)
     
