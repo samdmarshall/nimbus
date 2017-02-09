@@ -1,163 +1,88 @@
+# =======
+# Imports
+# =======
+
 import os
-import streams
-import parsexml
 import parseopt2
 
-type ObjCType = enum
-  ObjCType_char,
-  ObjCType_int,
-  ObjCType_long,
-  ObjCType_longlong,
-  ObjCType_unsignedchar,
-  ObjCType_unsignedint,
-  ObjCType_unsignedlong,
-  ObjCType_unsignedlonglong,
-  ObjCType_float,
-  ObjCType_double,
-  ObjCType_bool,
-  ObjCType_void,
-  ObjCType_cstring,
-  ObjCType_object,
-  ObjCType_class,
-  ObjCType_selector,
-  ObjCType_array,
-  ObjCType_struct,
-  ObjCType_union,
-  ObjCType_bitfield,
-  ObjCType_pointer,
-  ObjCType_functionpointer
+import libclang
 
-# global state
-var output_file_path: string
-var bridge_file_path: string
-var umbrella_header_path: string
-var linker_flags: string
+import "src/header.nim"
+import "src/framework.nim"
+
+# =====
+# Types
+# =====
+
+type SubCommand {.pure.} = enum 
+  None,
+  Framework,
+  Header
 
 # =========
-# functions
+# Functions
 # =========
 
-proc decodeObjCType(type_string: string): string =
-  let first_character = type_string[0]
-  case first_character
-  of 'c':
-    return "int8"
-  of 'C':
-    return "uint8"
-  of 'i':
-    return "int"
-  of 's':
-    return "cshort"
-  of 'l':
-    return "int32"
-  of 'q':
-    return "int64"
-  of '@':
-    return "id"
-  else:
-    return ""
+proc progName(): string =
+  ## get the program's name
+  result = os.extractFilename(os.getAppFilename())
 
-proc parseStruct(parser: var XmlParser, output: File): void =
-  discard
+proc usage(command: SubCommand): void =
+  ## define the usage for "--help"# define the usage for "--help"
+  case command:
+  of SubCommand.None: echo("usage: " & progName() & " [--help|-h] [--version] [header|framework] ...")
+  of SubCommand.Header: echo("usage: " & progName() & " header --path:<path to a header>")
+  of SubCommand.Framework: echo("usage: " & progName() & " framework --path:<path to framework>")
 
-proc parseCFType(parser: var XmlParser, output: File): void =
-  discard
+proc versionInfo(): void =
+  ## define the version number##
+  echo(progName() & " v0.1")
+  echo(getCString(getClangVersion()))
 
-proc parseOpaque(parser: var XmlParser, output: File): void =
-  discard
+# ===========================================
+# this is the entry-point, there is no main()
+# ===========================================
 
-proc parseConstant(parser: var XmlParser, output: File): void =
-  write(output, "const ")
-  while true:
-    case parser.kind
-    of xmlAttribute:
-      case parser.attrKey()
-      of "name":
-        write(output, parser.attrValue())
-        write(output, "*")
-      of "type":
-        write(output, ":")
-        write(output, decodeObjCType(parser.attrValue()))
-      else: discard
-    of xmlElementClose:
-      break
-    else: discard
-    parser.next()
-  write(output, " {.header:\"" & umbrella_header_path & "\", importobjc.}")
-  write(output, "\n")
-
-# ================
-# Main Entry Point
-# ================
-
-var output: File
+var working_path: string
+var current_command: SubCommand = SubCommand.None
 
 for kind, key, value in parseopt2.getopt():
   case kind
   of cmdLongOption, cmdShortOption:
     case key
-    of "help", "h": discard
-    of "version", "v": discard
-    of "output", "o":
-      output_file_path = value
-    of "umbrella", "u":
-      umbrella_header_path = value
-    of "linker-flags", "l":
-      linker_flags = value
+    of "version":
+      versionInfo()
+      quit(QuitSuccess)
+    of "help", "h":
+      usage(current_command)
+      quit(QuitSuccess)
+    of "path":
+      working_path = value
     else: discard
   of cmdArgument:
-    bridge_file_path = key
-  else: discard
-
-if bridge_file_path == nil:
-  echo("please supply the path to the bridging xml file!")
-  quit(QuitFailure)
-
-if umbrella_header_path == nil:
-  echo("please supply the path to the umbrella header!")
-  quit(QuitFailure)
-
-if not os.existsFile(output_file_path):
-  output = stdout
-else:
-  output = open(output_file_path, fmReadWrite)
-
-if not (linker_flags == nil):
-  write(output, "{.passL: \"" & linker_flags & "\".}")
-
-let bridge_file = streams.newFileStream(bridge_file_path, fmRead)
-var bridge_parser: XmlParser
-open(bridge_parser, bridge_file, bridge_file_path)
-
-while true:
-  bridge_parser.next()
-  case bridge_parser.kind
-  of xmlElementOpen:
-    case bridge_parser.elementName()
-    of "signatures":
-      bridge_parser.next()
-    of "depends_on":
-      bridge_parser.next()
-    of "struct":
-      parseStruct(bridge_parser, output)
-    of "cftype":
-      parseCFType(bridge_parser, output)
-    of "opaque":
-      parseOpaque(bridge_parser, output)
-    of "constant":
-      parseConstant(bridge_parser, output)
-    of "string_constant": discard
-    of "enum": discard
-    of "function": discard
-    of "function_alias": discard
-    of "class": discard
-    of "informal_protocol": discard
+    case key:
+    of "header":
+      current_command = SubCommand.Header
+    of "framework":
+      current_command = SubCommand.Framework
+    of "version":
+      versionInfo()
+      quit(QuitSuccess)      
+    of "help":
+      usage(current_command)
+      quit(QuitSuccess)
     else: discard
-  of xmlEof: break
   else: discard
 
-
-# finish up and close the files
-bridge_parser.close()
-if not os.existsFile(output_file_path):
-  output.close()
+if working_path == nil:
+  usage(current_command)
+elif os.existsFile(working_path) or os.existsDir(working_path):
+  case current_command
+  of SubCommand.None:
+    usage(current_command)
+  of SubCommand.Header:
+    parseHeader(working_path)
+  of SubCommand.Framework:
+    parseFramework(working_path)
+else:
+  echo("Unable to find file at path: '" & working_path & "'!")
