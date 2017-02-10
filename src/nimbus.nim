@@ -7,9 +7,9 @@ import parseopt2
 
 import libclang
 
-import "src/language.nim"
-import "src/header.nim"
-import "src/framework.nim"
+import "language.nim"
+import "header.nim"
+import "framework.nim"
 
 # =====
 # Types
