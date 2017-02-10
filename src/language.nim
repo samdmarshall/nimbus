@@ -34,7 +34,7 @@ type FunctionDeclaration* = object
   parameterNames*: seq[string]
   parameterTypes*: seq[string]
 
-type ParseCursor* = object
+type ParseCursor* {.union.} = object
   s*: StructDeclaration
   u*: UnionDeclaration
   e*: EnumDeclaration

@@ -13,28 +13,42 @@ import "language.nim"
 # Private API
 # ===========
 
-proc writeType(context: ParserContext): void = 
+proc writeType(context: ptr ParserContext): void = 
   case context.cursorType
   of CursorParseType.Struct:
     write(stdout, "type " & context.cursor.s.name & "* = object")
     write(stdout, "\n")
-    echo(context.cursor.s)
     for index in 0..<context.cursor.s.memberNames.len:
       let member_name = context.cursor.s.memberNames[index]
       let member_type = context.cursor.s.memberTypes[index]
       write(stdout, "  " & member_name & ": " & member_type)
       write(stdout, "\n")
   of CursorParseType.Union:
-    discard
+    write(stdout, "type " & context.cursor.u.name & "* {.union.} = object")
+    write(stdout, "\n")
+    for index in 0..<context.cursor.u.memberNames.len:
+      let member_name = context.cursor.u.memberNames[index]
+      let member_type = context.cursor.u.memberTypes[index]
+      write(stdout, "  " & member_name & ": " & member_type)
+      write(stdout, "\n")
   of CursorParseType.Enum:
-    discard
+    write(stdout, "type " & context.cursor.e.name & "* = enum")
+    write(stdout, "\n")
+    for index in 0..<context.cursor.e.memberNames.len:
+      let member_name = context.cursor.e.memberNames[index]
+      write(stdout, "  " & member_name)
+      if index < context.cursor.e.memberValues.len:
+        let member_value = context.cursor.e.memberValues[index]
+        write(stdout, " = " & member_value)
+      write(stdout, ",")
+      write(stdout, "\n")
   of CursorParseType.Function:
     discard
   else:
     discard
 
 proc visitChildrenCallback(cursor: CXCursor, parent: CXCursor, clientData: CXClientData): CXChildVisitResult {.cdecl.} =
-  var context = cast[ptr ParserContext](clientData)[]
+  var context = cast[ptr ParserContext](clientData)
   let source_range: CXSourceRange = libclang.getCursorExtent(cursor);
   let location: CXSourceLocation = libclang.getRangeStart(source_range);
   var file: CXFile = nil
@@ -49,21 +63,21 @@ proc visitChildrenCallback(cursor: CXCursor, parent: CXCursor, clientData: CXCli
       var names = newSeq[string]()
       var types = newSeq[string]()
       context.cursor.s = StructDeclaration(name: name, memberNames: names, memberTypes: types)
-      discard visitChildren(cursor, visitChildrenCallback, CXClientData(addr context))
+      discard visitChildren(cursor, visitChildrenCallback, clientData)
       writeType(context)
     of CXCursorKind.UnionDecl:
       context.cursorType = CursorParseType.Union
       var names = newSeq[string]()
       var types = newSeq[string]()
       context.cursor.u = UnionDeclaration(name: name, memberNames: names, memberTypes: types)
-      discard visitChildren(cursor, visitChildrenCallback, CXClientData(addr context))
+      discard visitChildren(cursor, visitChildrenCallback, clientData)
       writeType(context)
     of CXCursorKind.EnumDecl:
       context.cursorType = CursorParseType.Enum
       var names = newSeq[string]()
       var values = newSeq[string]()
       context.cursor.e = EnumDeclaration(name: name, memberNames: names, memberValues: values)
-      discard visitChildren(cursor, visitChildrenCallback, CXClientData(addr context))
+      discard visitChildren(cursor, visitChildrenCallback, clientData)
       writeType(context)
     of CXCursorKind.FieldDecl:
       case context.cursorType
@@ -73,20 +87,20 @@ proc visitChildrenCallback(cursor: CXCursor, parent: CXCursor, clientData: CXCli
         context.cursor.u.memberNames.add(name)
       else:
         discard
-      discard visitChildren(cursor, visitChildrenCallback, CXClientData(addr context))
+      discard visitChildren(cursor, visitChildrenCallback, clientData)
     of CXCursorKind.EnumConstantDecl:
       case context.cursorType
       of CursorParseType.Enum:
         context.cursor.e.memberNames.add(name)
       else:
         discard
-      discard visitChildren(cursor, visitChildrenCallback, CXClientData(addr context))
+      discard visitChildren(cursor, visitChildrenCallback, clientData)
     of CXCursorKind.FunctionDecl:
       context.cursorType = CursorParseType.Function
       var names = newSeq[string]()
       var types = newSeq[string]()
       context.cursor.f = FunctionDeclaration(name: name, returnValue: nil, parameterNames: names, parameterTypes: types)
-      discard visitChildren(cursor, visitChildrenCallback, CXClientData(addr context))
+      discard visitChildren(cursor, visitChildrenCallback, clientData)
       writeType(context)
     of CXCursorKind.ObjCInterfaceDecl:
       discard
@@ -104,7 +118,7 @@ proc visitChildrenCallback(cursor: CXCursor, parent: CXCursor, clientData: CXCli
         context.cursor.f.parameterNames.add(name)
       else:
         discard
-      discard visitChildren(cursor, visitChildrenCallback, CXClientData(addr context))
+      discard visitChildren(cursor, visitChildrenCallback, clientData)
     of CXCursorKind.TypeRef:
       case context.cursorType
       of CursorParseType.Struct:
