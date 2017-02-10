@@ -68,7 +68,6 @@ proc visitChildrenCallback(cursor: CXCursor, parent: CXCursor, clientData: CXCli
       var types = newSeq[string]()
       context.cursor.f = FunctionDeclaration(name: name, returnValue: nil, parameterNames: names, parameterTypes: types)
       discard visitChildren(cursor, visitChildrenCallback, clientData)
-      writeType(context)
     of CXCursorKind.ObjCInterfaceDecl:
       discard
     of CXCursorKind.ObjCCategoryDecl:
@@ -77,8 +76,10 @@ proc visitChildrenCallback(cursor: CXCursor, parent: CXCursor, clientData: CXCli
       discard
     of CXCursorKind.ObjCInstanceMethodDecl:
       discard
-    of CXCursorKind.ObjCClassMethodDecl: discard
-    of CXCursorKind.TypedefDecl: discard
+    of CXCursorKind.ObjCClassMethodDecl:
+      discard
+    of CXCursorKind.TypedefDecl:
+      discard
     of CXCursorKind.ParmDecl:
       case context.cursorType
       of CursorParseType.Function:
@@ -105,9 +106,10 @@ proc visitChildrenCallback(cursor: CXCursor, parent: CXCursor, clientData: CXCli
 proc parseTranslationUnit*(file_path: string, input_language: Language): void =
   case input_language:
   of Language.ObjC:
-    echo("type Id {.importc: \"id\", header: \"<objc/NSObject.h>\", final.} = distinct int")
+    write(stdout, "type Id {.importc: \"id\", header: \"<objc/NSObject.h>\", final.} = distinct int" & "\n")
   else:
     discard
+  write(stdout, "## " & file_path & "\n")
   let arguments: seq[string] = @["-x", $input_language, "-I/usr/include/", "-I."]
   let args_cstring = allocCStringArray(arguments)
   let index = libclang.createIndex(1,1)
