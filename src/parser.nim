@@ -8,44 +8,11 @@ import strutils
 import libclang
 
 import "language.nim"
+import "serialize.nim"
 
 # ===========
 # Private API
 # ===========
-
-proc writeType(context: ptr ParserContext): void = 
-  case context.cursorType
-  of CursorParseType.Struct:
-    write(stdout, "type " & context.cursor.s.name & "* = object")
-    write(stdout, "\n")
-    for index in 0..<context.cursor.s.memberNames.len:
-      let member_name = context.cursor.s.memberNames[index]
-      let member_type = context.cursor.s.memberTypes[index]
-      write(stdout, "  " & member_name & ": " & member_type)
-      write(stdout, "\n")
-  of CursorParseType.Union:
-    write(stdout, "type " & context.cursor.u.name & "* {.union.} = object")
-    write(stdout, "\n")
-    for index in 0..<context.cursor.u.memberNames.len:
-      let member_name = context.cursor.u.memberNames[index]
-      let member_type = context.cursor.u.memberTypes[index]
-      write(stdout, "  " & member_name & ": " & member_type)
-      write(stdout, "\n")
-  of CursorParseType.Enum:
-    write(stdout, "type " & context.cursor.e.name & "* = enum")
-    write(stdout, "\n")
-    for index in 0..<context.cursor.e.memberNames.len:
-      let member_name = context.cursor.e.memberNames[index]
-      write(stdout, "  " & member_name)
-      if index < context.cursor.e.memberValues.len:
-        let member_value = context.cursor.e.memberValues[index]
-        write(stdout, " = " & member_value)
-      write(stdout, ",")
-      write(stdout, "\n")
-  of CursorParseType.Function:
-    discard
-  else:
-    discard
 
 proc visitChildrenCallback(cursor: CXCursor, parent: CXCursor, clientData: CXClientData): CXChildVisitResult {.cdecl.} =
   var context = cast[ptr ParserContext](clientData)
@@ -64,21 +31,21 @@ proc visitChildrenCallback(cursor: CXCursor, parent: CXCursor, clientData: CXCli
       var types = newSeq[string]()
       context.cursor.s = StructDeclaration(name: name, memberNames: names, memberTypes: types)
       discard visitChildren(cursor, visitChildrenCallback, clientData)
-      writeType(context)
+      serializeStruct(context.cursor.s)
     of CXCursorKind.UnionDecl:
       context.cursorType = CursorParseType.Union
       var names = newSeq[string]()
       var types = newSeq[string]()
       context.cursor.u = UnionDeclaration(name: name, memberNames: names, memberTypes: types)
       discard visitChildren(cursor, visitChildrenCallback, clientData)
-      writeType(context)
+      serializeUnion(context.cursor.u)
     of CXCursorKind.EnumDecl:
       context.cursorType = CursorParseType.Enum
       var names = newSeq[string]()
       var values = newSeq[string]()
       context.cursor.e = EnumDeclaration(name: name, memberNames: names, memberValues: values)
       discard visitChildren(cursor, visitChildrenCallback, clientData)
-      writeType(context)
+      serializeEnum(context.cursor.e)
     of CXCursorKind.FieldDecl:
       case context.cursorType
       of CursorParseType.Struct:
