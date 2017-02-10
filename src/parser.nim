@@ -13,57 +13,108 @@ import "language.nim"
 # Private API
 # ===========
 
+proc writeType(context: ParserContext): void = 
+  case context.cursorType
+  of CursorParseType.Struct:
+    write(stdout, "type " & context.cursor.s.name & "* = object")
+    write(stdout, "\n")
+    echo(context.cursor.s)
+    for index in 0..<context.cursor.s.memberNames.len:
+      let member_name = context.cursor.s.memberNames[index]
+      let member_type = context.cursor.s.memberTypes[index]
+      write(stdout, "  " & member_name & ": " & member_type)
+      write(stdout, "\n")
+  of CursorParseType.Union:
+    discard
+  of CursorParseType.Enum:
+    discard
+  of CursorParseType.Function:
+    discard
+  else:
+    discard
+
 proc visitChildrenCallback(cursor: CXCursor, parent: CXCursor, clientData: CXClientData): CXChildVisitResult {.cdecl.} =
-  let file_path = cast[ptr cstring](clientData)[]
+  var context = cast[ptr ParserContext](clientData)[]
   let source_range: CXSourceRange = libclang.getCursorExtent(cursor);
   let location: CXSourceLocation = libclang.getRangeStart(source_range);
-  var file: CXFile
+  var file: CXFile = nil
   libclang.getFileLocation(location, addr file, nil, nil, nil)
-  let is_in_passed_header = ($libclang.getCString(libclang.getFileName(file)) == $file_path)
+  let current_file_name = $libclang.getCString(libclang.getFileName(file))
+  let is_in_passed_header = (current_file_name == context.parseFile)
   if is_in_passed_header:
     let name = $libclang.getCString(getCursorSpelling(cursor))
     case libclang.getCursorKind(cursor)
     of CXCursorKind.StructDecl:
-      echo("type " & name & "* = object")
-      discard visitChildren(cursor, visitChildrenCallback, clientData)
+      context.cursorType = CursorParseType.Struct
+      var names = newSeq[string]()
+      var types = newSeq[string]()
+      context.cursor.s = StructDeclaration(name: name, memberNames: names, memberTypes: types)
+      discard visitChildren(cursor, visitChildrenCallback, CXClientData(addr context))
+      writeType(context)
     of CXCursorKind.UnionDecl:
-      echo("type " & name & "* {.union.} = object")
-      discard visitChildren(cursor, visitChildrenCallback, clientData)
+      context.cursorType = CursorParseType.Union
+      var names = newSeq[string]()
+      var types = newSeq[string]()
+      context.cursor.u = UnionDeclaration(name: name, memberNames: names, memberTypes: types)
+      discard visitChildren(cursor, visitChildrenCallback, CXClientData(addr context))
+      writeType(context)
     of CXCursorKind.EnumDecl:
-      echo("type " & name & "* = enum")
-      discard visitChildren(cursor, visitChildrenCallback, clientData)
+      context.cursorType = CursorParseType.Enum
+      var names = newSeq[string]()
+      var values = newSeq[string]()
+      context.cursor.e = EnumDeclaration(name: name, memberNames: names, memberValues: values)
+      discard visitChildren(cursor, visitChildrenCallback, CXClientData(addr context))
+      writeType(context)
     of CXCursorKind.FieldDecl:
-      echo("  " & name)
-      discard
+      case context.cursorType
+      of CursorParseType.Struct:
+        context.cursor.s.memberNames.add(name)
+      of CursorParseType.Union:
+        context.cursor.u.memberNames.add(name)
+      else:
+        discard
+      discard visitChildren(cursor, visitChildrenCallback, CXClientData(addr context))
     of CXCursorKind.EnumConstantDecl:
-      echo("  " & name & ",")
-      discard
+      case context.cursorType
+      of CursorParseType.Enum:
+        context.cursor.e.memberNames.add(name)
+      else:
+        discard
+      discard visitChildren(cursor, visitChildrenCallback, CXClientData(addr context))
     of CXCursorKind.FunctionDecl:
-      echo("proc " & name & "* = ")
-      discard visitChildren(cursor, visitChildrenCallback, clientData)
+      context.cursorType = CursorParseType.Function
+      var names = newSeq[string]()
+      var types = newSeq[string]()
+      context.cursor.f = FunctionDeclaration(name: name, returnValue: nil, parameterNames: names, parameterTypes: types)
+      discard visitChildren(cursor, visitChildrenCallback, CXClientData(addr context))
+      writeType(context)
     of CXCursorKind.ObjCInterfaceDecl:
-      echo("type " & name & "* = Id")
-      discard visitChildren(cursor, visitChildrenCallback, clientData)
+      discard
     of CXCursorKind.ObjCCategoryDecl:
-      discard visitChildren(cursor, visitChildrenCallback, clientData)
+      discard
     of CXCursorKind.ObjCProtocolDecl:
-      discard visitChildren(cursor, visitChildrenCallback, clientData)
+      discard
     of CXCursorKind.ObjCInstanceMethodDecl:
-      let argument_count = strutils.count(name, ":")
-      let replaced_method_string = strutils.replace(name, ":", "_")
-      let method_string = if strutils.endsWith(replaced_method_string, "_"): replaced_method_string[0 .. replaced_method_string.len - 2]
-                          else: replaced_method_string
-      #echo("proc " & method_string & "*(self: object")
-      if argument_count > 0:
-        for index in 0..argument_count:
-          discard visitChildren(cursor, visitChildrenCallback, clientData)
-      #echo(") {.importobjc: \"" & method_string & "\", noDecl.}")
+      discard
     of CXCursorKind.ObjCClassMethodDecl: discard
     of CXCursorKind.TypedefDecl: discard
     of CXCursorKind.ParmDecl:
-      #echo(name)
+      case context.cursorType
+      of CursorParseType.Function:
+        context.cursor.f.parameterNames.add(name)
+      else:
+        discard
+      discard visitChildren(cursor, visitChildrenCallback, CXClientData(addr context))
+    of CXCursorKind.TypeRef:
+      case context.cursorType
+      of CursorParseType.Struct:
+        context.cursor.s.memberTypes.add(name)
+      of CursorParseType.Union:
+        context.cursor.u.memberTypes.add(name)
+      else:
+        discard
+    else:
       discard
-    else: discard
   result = CXChildVisitResult.Continue
 
 # ==========
@@ -81,8 +132,8 @@ proc parseTranslationUnit*(file_path: string, input_language: Language): void =
   let index = libclang.createIndex(1,1)
   let parameter_count = (arguments.len - 1).cint
   let tu = libclang.parseTranslationUnit(index, file_path.cstring, args_cstring, parameter_count, nil, 0, 0)
-  var file_path_cstring = file_path.cstring
-  let client_data = CXClientData(addr file_path_cstring)
+  var context = ParserContext(parseFile: file_path, cursor: ParseCursor())
+  let client_data = CXClientData(addr context)
   let cursor = libclang.getTranslationUnitCursor(tu)
   discard libclang.visitChildren(cursor, visitChildrenCallback, client_data)
     
