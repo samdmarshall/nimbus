@@ -38,3 +38,13 @@ proc serializeEnum*(e: EnumDeclaration): void =
     write(stdout, ",")
     write(stdout, "\n")
 
+proc serializeFunction*(f: FunctionDeclaration): void =
+  write(stdout, "proc " & f.name & "*(")
+  for index in 0..<f.parameterNames.len:
+    let parameter_name = f.parameterNames[index]
+    let parameter_type = f.parameterTypes[index]
+    write(stdout, parameter_name & ": " & parameter_type)
+    if index < (f.parameterNames.len - 1):
+      write(stdout, ", ")
+  write(stdout, "): " & f.returnValue & " {.importc: \""& f.name & "\", noDecl.}")
+  write(stdout, "\n") 

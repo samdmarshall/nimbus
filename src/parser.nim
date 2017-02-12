@@ -24,7 +24,9 @@ proc visitChildrenCallback(cursor: CXCursor, parent: CXCursor, clientData: CXCli
   let is_in_passed_header = (current_file_name == context.parseFile)
   if is_in_passed_header:
     let name = $libclang.getCString(getCursorSpelling(cursor))
-    case libclang.getCursorKind(cursor)
+    let cursor_kind = libclang.getCursorKind(cursor)
+    echo(cursor_kind)
+    case cursor_kind
     of CXCursorKind.StructDecl:
       context.cursorType = CursorParseType.Struct
       var names = newSeq[string]()
@@ -68,6 +70,7 @@ proc visitChildrenCallback(cursor: CXCursor, parent: CXCursor, clientData: CXCli
       var types = newSeq[string]()
       context.cursor.f = FunctionDeclaration(name: name, returnValue: nil, parameterNames: names, parameterTypes: types)
       discard visitChildren(cursor, visitChildrenCallback, clientData)
+      serializeFunction(context.cursor.f)
     of CXCursorKind.ObjCInterfaceDecl:
       discard
     of CXCursorKind.ObjCCategoryDecl:
@@ -93,10 +96,16 @@ proc visitChildrenCallback(cursor: CXCursor, parent: CXCursor, clientData: CXCli
         context.cursor.s.memberTypes.add(name)
       of CursorParseType.Union:
         context.cursor.u.memberTypes.add(name)
+      of CursorParseType.Function:
+        if context.cursor.f.returnValue == nil:
+          context.cursor.f.returnValue = name
+        else:
+          context.cursor.f.parameterTypes.add(name)
+        discard visitChildren(cursor, visitChildrenCallback, clientData)
       else:
         discard
     else:
-      discard
+      discard visitChildren(cursor, visitChildrenCallback, clientData)
   result = CXChildVisitResult.Continue
 
 # ==========
