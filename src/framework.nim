@@ -21,4 +21,4 @@ proc parseFramework*(framework_path: string, input_language: Language): void =
     parseHeader(file, input_language)
   for file in os.walkDirRec(private_headers_path):
     parseHeader(file, input_language)
-    
+
