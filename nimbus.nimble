@@ -11,4 +11,4 @@ binDir        = "build/"
 
 # Dependencies
 requires "nim >= 1.0.0"
-requires "https://github.com/samdmarshall/libclang-nim"
+requires "https://github.com/samdmarshall/libclang-nim >= 0.59"

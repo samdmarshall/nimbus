@@ -12,7 +12,7 @@ import "parser.nim"
 # ==========
 
 proc parseHeader*(header_path: string, input_language: Language): void =
-  if not os.existsFile(header_path):
+  if not existsFile(header_path):
     echo("this is not a file, please specify a file to parse a header")
     return
   parseTranslationUnit(header_path, input_language)
